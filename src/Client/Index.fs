@@ -488,6 +488,16 @@ let navBrand =
         ]
     ]
 
+let getAttributeById =
+    let attributes = Map.ofList Init.attributes
+    fun (attributeId:AttributeId) ->
+        Map.find attributeId attributes
+
+let getCharacterById =
+    let characters = Map.ofList Init.characters
+    fun (characterId:CharacterId) ->
+        Map.find characterId characters
+
 let containerBox (state : State) (dispatch : Msg -> unit) =
     Box.box' [ ] [
         let loginBox =
@@ -561,7 +571,7 @@ let containerBox (state : State) (dispatch : Msg -> unit) =
                                                         )
                                                     ] [
                                                         attributeId
-                                                        // |> getLetterById gameState.Language
+                                                        |> getAttributeById
                                                         |> fun x -> string x
                                                         |> str
                                                     ]
@@ -576,7 +586,7 @@ let containerBox (state : State) (dispatch : Msg -> unit) =
                                                         dispatch (ThreeCardsTemplateMsg DeselectAttribute1))
                                                 ] [
                                                     attributeId
-                                                    // |> getLetterById gameState.Language
+                                                    |> getAttributeById
                                                     |> fun x -> string x
                                                     |> str
                                                 ]
@@ -589,7 +599,7 @@ let containerBox (state : State) (dispatch : Msg -> unit) =
                                                         dispatch (ThreeCardsTemplateMsg DeselectAttribute2))
                                                 ] [
                                                     attributeId
-                                                    // |> getLetterById gameState.Language
+                                                    |> getAttributeById
                                                     |> fun x -> string x
                                                     |> str
                                                 ]
@@ -620,7 +630,7 @@ let containerBox (state : State) (dispatch : Msg -> unit) =
                                                         )
                                                     ] [
                                                         characterId
-                                                        // |> getLetterById gameState.Language
+                                                        |> getCharacterById
                                                         |> fun x -> string x
                                                         |> str
                                                     ]
@@ -630,13 +640,13 @@ let containerBox (state : State) (dispatch : Msg -> unit) =
 
                                         div [] [
                                             match threeCardsTemplate.SelectedCharacter with
-                                            | Some attributeId ->
+                                            | Some characterId ->
                                                 Button.span [
                                                     Button.OnClick (fun _ ->
                                                         dispatch (ThreeCardsTemplateMsg DeselectCharacter))
                                                 ] [
-                                                    attributeId
-                                                    // |> getLetterById gameState.Language
+                                                    characterId
+                                                    |> getCharacterById
                                                     |> fun x -> string x
                                                     |> str
                                                 ]
@@ -690,7 +700,7 @@ let containerBox (state : State) (dispatch : Msg -> unit) =
                                                         )
                                                     ] [
                                                         attributeId
-                                                        // |> getLetterById gameState.Language
+                                                        |> getAttributeById
                                                         |> fun x -> string x
                                                         |> str
                                                     ]
@@ -706,7 +716,7 @@ let containerBox (state : State) (dispatch : Msg -> unit) =
                                                         dispatch DeselectOneAttribute)
                                                 ] [
                                                     attributeId
-                                                    // |> getLetterById gameState.Language
+                                                    |> getAttributeById
                                                     |> fun x -> string x
                                                     |> str
                                                 ]
