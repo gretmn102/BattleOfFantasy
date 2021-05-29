@@ -744,12 +744,50 @@ let containerBox (state : State) (dispatch : Msg -> unit) =
                             | Client.StartGameStage ->
                                 match state.GameState with
                                 | Some gameState ->
+                                    let threeCardsRender (threeCards:ThreeCards) =
+                                        div [] [
+                                            div [] [
+                                                threeCards.Character
+                                                |> getCharacterById
+                                                |> str
+                                            ]
+                                            div [] [
+                                                threeCards.Attribute1
+                                                |> getAttributeById
+                                                |> str
+                                            ]
+                                            div [] [
+                                                threeCards.Attribute2
+                                                |> getAttributeById
+                                                |> str
+                                            ]
+                                        ]
+
                                     div [] [
-                                        str (sprintf "%A" gameState.ClientPlayer)
+                                        div [] [ b [] [ str state.PlayerId] ]
+                                        match gameState.ClientPlayer with
+                                        | FinalHand hand ->
+                                            threeCardsRender hand
+                                        | _ -> ()
                                     ]
-                                    div [] [
-                                        str (sprintf "%A" gameState.OtherPlayers)
-                                    ]
+
+                                    div [] (
+                                        gameState.OtherPlayers
+                                        |> Seq.map (fun (KeyValue(playerId, v)) ->
+                                            div [] [
+                                                hr []
+                                                div [] [ b [] [ str playerId ] ]
+                                                div [] [
+                                                    match v with
+                                                    | Client.FinalHand hand ->
+                                                        threeCardsRender hand
+                                                    | _ -> ()
+                                                ]
+                                            ]
+                                        )
+                                    )
+
+
                                 | None -> ()
                         ]
                     ]
