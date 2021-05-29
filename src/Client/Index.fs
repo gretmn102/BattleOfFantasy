@@ -212,7 +212,7 @@ let update (msg: Msg) (state: State): State * Cmd<Msg> =
                                             if playerId = state.PlayerId then
                                                 { state with
                                                     GameState =
-                                                        { gameState with
+                                                        { state.GameState.Value with
                                                             ClientPlayer =
                                                                 FinalHand cards
                                                         }
@@ -221,7 +221,7 @@ let update (msg: Msg) (state: State): State * Cmd<Msg> =
                                             else
                                                 { state with
                                                     GameState =
-                                                        { gameState with
+                                                        { state.GameState.Value with
                                                             OtherPlayers =
                                                                 Map.add
                                                                     playerId
