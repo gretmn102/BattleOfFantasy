@@ -540,6 +540,55 @@ let containerBox (state : State) (dispatch : Msg -> unit) =
                                     let threeCardsTemplate = state.ThreeCardsTemplate
 
                                     div [] [
+                                        str "Выберите карту персонажа:"
+                                        div [] (
+                                            let characters =
+                                                [
+                                                    match threeCardsTemplate.SelectedCharacter with
+                                                    | Some char -> char
+                                                    | None -> ()
+                                                ]
+                                            let isEnabled =
+                                                List.isEmpty characters
+
+                                            hand.Characters
+                                            |> List.choose (fun characterId ->
+                                                if List.contains characterId characters then None
+                                                else
+                                                    Button.span [
+                                                        Button.Disabled (not isEnabled)
+                                                        Button.OnClick (fun _ ->
+                                                            if isEnabled then
+                                                                dispatch (ThreeCardsTemplateMsg (SelectCharacter characterId))
+                                                        )
+                                                    ] [
+                                                        characterId
+                                                        |> getCharacterById
+                                                        |> fun x -> string x
+                                                        |> str
+                                                    ]
+                                                    |> Some
+                                            )
+                                        )
+
+                                        div [] [
+                                            match threeCardsTemplate.SelectedCharacter with
+                                            | Some characterId ->
+                                                Button.span [
+                                                    Button.OnClick (fun _ ->
+                                                        dispatch (ThreeCardsTemplateMsg DeselectCharacter))
+                                                ] [
+                                                    characterId
+                                                    |> getCharacterById
+                                                    |> fun x -> string x
+                                                    |> str
+                                                ]
+                                            | None -> ()
+                                        ]
+                                    ]
+
+                                    div [] [
+                                        str "Выберите две карты атрибутов:"
                                         div [] (
                                             let atributes =
                                                 [
@@ -607,53 +656,6 @@ let containerBox (state : State) (dispatch : Msg -> unit) =
                                         ]
                                     ]
 
-                                    div [] [
-                                        div [] (
-                                            let characters =
-                                                [
-                                                    match threeCardsTemplate.SelectedCharacter with
-                                                    | Some char -> char
-                                                    | None -> ()
-                                                ]
-                                            let isEnabled =
-                                                List.isEmpty characters
-
-                                            hand.Characters
-                                            |> List.choose (fun characterId ->
-                                                if List.contains characterId characters then None
-                                                else
-                                                    Button.span [
-                                                        Button.Disabled (not isEnabled)
-                                                        Button.OnClick (fun _ ->
-                                                            if isEnabled then
-                                                                dispatch (ThreeCardsTemplateMsg (SelectCharacter characterId))
-                                                        )
-                                                    ] [
-                                                        characterId
-                                                        |> getCharacterById
-                                                        |> fun x -> string x
-                                                        |> str
-                                                    ]
-                                                    |> Some
-                                            )
-                                        )
-
-                                        div [] [
-                                            match threeCardsTemplate.SelectedCharacter with
-                                            | Some characterId ->
-                                                Button.span [
-                                                    Button.OnClick (fun _ ->
-                                                        dispatch (ThreeCardsTemplateMsg DeselectCharacter))
-                                                ] [
-                                                    characterId
-                                                    |> getCharacterById
-                                                    |> fun x -> string x
-                                                    |> str
-                                                ]
-                                            | None -> ()
-                                        ]
-                                    ]
-
                                     Control.p [] [
                                         Button.a [
                                             let isEnabled =
@@ -678,19 +680,21 @@ let containerBox (state : State) (dispatch : Msg -> unit) =
                                 match gameState.ClientPlayer with
                                 | ThreeCards threeCards ->
                                     div [] [
+                                        str "Выберите один атрибут, который хотите подбросить противнику:"
+
                                         div [] (
-                                            let characters =
+                                            let attributes =
                                                 [
                                                     match state.SelectOneAttribute with
                                                     | Some char -> char
                                                     | None -> ()
                                                 ]
                                             let isEnabled =
-                                                List.isEmpty characters
+                                                List.isEmpty attributes
 
                                             [ threeCards.Attribute1; threeCards.Attribute2 ]
                                             |> List.choose (fun attributeId ->
-                                                if List.contains attributeId characters then None
+                                                if List.contains attributeId attributes then None
                                                 else
                                                     Button.span [
                                                         Button.Disabled (not isEnabled)
