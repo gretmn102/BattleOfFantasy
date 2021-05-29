@@ -221,7 +221,9 @@ let update (msg: Msg) (state: State): State * Cmd<Msg> =
                                             else
                                                 { state with
                                                     GameState =
-                                                        { state.GameState.Value with
+                                                        let gameState =
+                                                            state.GameState.Value
+                                                        { gameState with
                                                             OtherPlayers =
                                                                 Map.add
                                                                     playerId
