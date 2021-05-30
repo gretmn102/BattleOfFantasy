@@ -14,11 +14,13 @@ type T =
     | Login of UserId * AsyncReplyChannel<Result<Client.GameState option, LoginError> Res>
     | SelectThreeCardsMove of (UserId * ThreeCards) * AsyncReplyChannel<Result<unit, MoveError> Res>
     | SelectOneAttributeMove of (UserId * AttributeId) * AsyncReplyChannel<Result<unit, MoveError> Res>
+    | RestartMove of UserId * AsyncReplyChannel<Result<unit, MoveError> Res>
 
 type GameStage =
     | SelectThreeCardsStage of Abstr.SelectThreeCards
     | SelectAttributeStage of Abstr.SelectAttribute
-    | StartGameStage of Abstr.State
+    | RestartStage of Abstr.RestartFunction
+
 type State =
     {
         Players: Map<UserId, unit>
@@ -38,8 +40,8 @@ let toClientGameState currPlayerId (abstrState:Abstr.State) (gameStage:GameStage
                     Client.ThreeCards
                 | ChoosenAttribute _ ->
                     Client.ChoosenAttribute
-                | FinalHand x ->
-                    Client.FinalHand x
+                | FinalHand (x, isRestart) ->
+                    Client.FinalHand (x, isRestart)
             )
 
         ClientPlayer =
@@ -55,7 +57,7 @@ let toClientGameState currPlayerId (abstrState:Abstr.State) (gameStage:GameStage
             match gameStage with
             | SelectThreeCardsStage _ -> Client.SelectThreeCardsStage
             | SelectAttributeStage _ -> Client.SelectAttributeStage
-            | StartGameStage _ -> Client.StartGameStage
+            | RestartStage _ -> Client.RestartStage
     }
 
 let maxPlayers = 3
@@ -66,12 +68,12 @@ let justReturn x =
         PlayersMsgs = Map.empty
     }
 
-let startGame playersMsgs state (abstrState:Abstr.State) =
+let startGame playersMsgs state ((abstrState, f):Abstr.RestartFunction) =
     let players =
         abstrState.Players
         |> Seq.map (fun (KeyValue(k, v)) ->
             match v with
-            | FinalHand x ->
+            | FinalHand(x, isRestart) ->
                 k, x
             | x -> failwithf "Expected FinalHand but %A" x
         )
@@ -85,10 +87,38 @@ let startGame playersMsgs state (abstrState:Abstr.State) =
     let state =
         { state with
             GameStage =
-                StartGameStage abstrState
+                RestartStage(abstrState, f)
                 |> Some
         }
     playersMsgs, state
+
+let beginGame playersMsgs state =
+    let playersIds =
+        state.Players
+        |> Seq.map (fun (KeyValue(playerId, _)) -> playerId)
+        |> List.ofSeq
+
+    match Abstr.start playersIds with
+    | Abstr.Begin (xs, f) ->
+        match f with
+        | Abstr.WaitSelectThreeCards (abstrState, f) ->
+            let gameStage =
+                SelectThreeCardsStage (abstrState, f)
+            let playersMsgs =
+                xs
+                |> List.fold
+                    (fun playersMsgs (playerId, startHand) ->
+                        let x = toClientGameState playerId abstrState gameStage
+                        Map.add playerId (GameStarted x :: playersMsgs.[playerId]) playersMsgs
+                    )
+                    playersMsgs
+            let state =
+                { state with
+                    GameStage = Some gameStage
+                }
+            playersMsgs, state
+        | Abstr.SelectAttribute (_) ->
+            failwith "Abstr.SelectAttribute (_)"
 
 let exec state = function
     | Login(userId, r) ->
@@ -101,7 +131,7 @@ let exec state = function
                     match gameStage with
                     | SelectThreeCardsStage(abstrState, _)
                     | SelectAttributeStage(abstrState, _)
-                    | StartGameStage abstrState ->  abstrState
+                    | RestartStage (abstrState, _) -> abstrState
 
                 toClientGameState userId abstrState gameStage
                 |> Some
@@ -132,29 +162,7 @@ let exec state = function
                         |> Map.add userId ()
                 }
             if playersCount + 1 = maxPlayers then // start the game
-                let playersMsgs, gameStage =
-                    let playersIds =
-                        state.Players
-                        |> Seq.map (fun (KeyValue(playerId, _)) -> playerId)
-                        |> List.ofSeq
-
-                    match Abstr.start playersIds with
-                    | Abstr.Begin (xs, f) ->
-                        match f with
-                        | Abstr.WaitSelectThreeCards (abstrState, f) ->
-                            let gameStage =
-                                SelectThreeCardsStage (abstrState, f)
-                            let playersMsgs =
-                                xs
-                                |> List.fold
-                                    (fun playerMsgs (playerId, startHand) ->
-                                        let x = toClientGameState playerId abstrState gameStage
-                                        Map.add playerId (GameStarted x :: playerMsgs.[playerId]) playerMsgs
-                                    )
-                                    playersMsgs
-                            playersMsgs, gameStage
-                        | Abstr.SelectAttribute (_) ->
-                            failwith "Abstr.SelectAttribute (_)"
+                let playersMsgs, state = beginGame playersMsgs state
 
                 {
                     Return = Ok None
@@ -162,9 +170,7 @@ let exec state = function
                 }
                 |> r.Reply
 
-                { state with
-                    GameStage = Some gameStage
-                }
+                state
             else
                 {
                     Return = Ok None
@@ -229,8 +235,9 @@ let exec state = function
                         |> r.Reply
 
                         state
+
                 | SelectAttributeStage _
-                | StartGameStage _ as x ->
+                | RestartStage _ as x ->
                     justReturn (Error (StrError (sprintf "expected SelectThreeCardsStage but %A" x)))
                     |> r.Reply
 
@@ -279,11 +286,63 @@ let exec state = function
 
                         state
                 | SelectThreeCardsStage _
-                | StartGameStage _ as x ->
+                | RestartStage _ as x ->
                     justReturn (Error (StrError (sprintf "expected SelectAttributeStage but %A" x)))
                     |> r.Reply
 
                     state
+            | None ->
+                r.Reply (justReturn (Error GameHasNotStartedYet))
+                state
+        else
+            r.Reply (justReturn (Error (GetStateError YouAreNotLogin)))
+            state
+    | RestartMove(userId, r) ->
+        if Map.containsKey userId state.Players then
+            match state.GameStage with
+            | Some gameStage ->
+                match gameStage with
+                | RestartStage(_, f) ->
+                    match f userId with
+                    | Right x ->
+                        let playersMsgs =
+                            state.Players
+                            |> Map.map (fun userId' _ ->
+                                [GameResponse (Restart userId)]
+                            )
+                        let playersMsgs, state =
+                            match x with
+                            | Abstr.Restart x ->
+                                let playersMsgs = playersMsgs
+
+                                let state =
+                                    { state with
+                                        GameStage =
+                                            RestartStage x
+                                            |> Some
+                                    }
+                                playersMsgs, state
+                            | Abstr.End ->
+                                beginGame playersMsgs state
+                        {
+                            Return = Ok ()
+                            PlayersMsgs = Map.map (fun _ -> List.rev) playersMsgs
+                        }
+                        |> r.Reply
+                        state
+                    | Left err ->
+                        justReturn (Error (RestartCircleError err))
+                        |> r.Reply
+
+                        state
+                | SelectThreeCardsStage _
+                | SelectAttributeStage _  as x ->
+                    justReturn (Error (StrError (sprintf "expected SelectAttributeStage but %A" x)))
+                    |> r.Reply
+
+                    state
+
+
             | None ->
                 r.Reply (justReturn (Error GameHasNotStartedYet))
                 state

@@ -15,6 +15,10 @@ type GetStateResult<'GameResponse, 'ClientGameState> =
 type GetStateError =
     | YouAreNotLogin
 
+type RestartCircleError =
+    | YouHaveAlreadySelectedRestart
+    | YouDontPlay
+
 type SelectAttributeError =
     | TwoEqualAttributes
     | YouDontHaveThisAttribute
@@ -27,6 +31,7 @@ type MoveError =
     | GameEndedError
     | NotYourMove
     | MovError of SelectAttributeError
+    | RestartCircleError of RestartCircleError
     | StrError of string
 
 type PlayerId = string
@@ -58,19 +63,19 @@ type PlayerStage =
     | StartHand of StartHand
     | ThreeCards of ThreeCards
     | ChoosenAttribute of ChoosenHand
-    | FinalHand of ThreeCards
+    | FinalHand of ThreeCards * StartAgain:bool
 
 module Client =
     type OtherPlayerStage =
         | StartHand
         | ThreeCards
         | ChoosenAttribute
-        | FinalHand of ThreeCards
+        | FinalHand of ThreeCards * StartAgain:bool
 
     type MoveStage =
         | SelectThreeCardsStage
         | SelectAttributeStage
-        | StartGameStage
+        | RestartStage
 
     type GameState =
         {
@@ -88,6 +93,7 @@ type GameResponse =
     | SelectedThreeCards of PlayerId
     | StartSelectAttribute
     | SelectedOneAttribute of PlayerId
+    | Restart of PlayerId
     | StartGame of (PlayerId * ThreeCards) list
 
 module Init =
@@ -286,5 +292,7 @@ type RemoteServerMsg =
 
     | ThreeCardsMove of ThreeCards
     | SelectOneAttributeMove of AttributeId
+    | RestartMove
+
 module Remote =
     let socketPath = "/socket"

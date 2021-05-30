@@ -26,6 +26,13 @@ type ThreeCardsTemplate =
             Attribute2 = x.SelectedAttribute2.Value
             Character = x.SelectedCharacter.Value
         }
+    static member empty =
+        {
+            SelectedAttribute1 = None
+            SelectedAttribute2 = None
+            SelectedCharacter = None
+        }
+
 type State =
     {
         PlayerId: UserId
@@ -63,6 +70,8 @@ type Msg =
     | SelectOneAttribute of AttributeId
     | DeselectOneAttribute
     | SelectOneAttributeMove
+
+    | RestartMove
 let init(): State * Cmd<Msg> =
     let state =
         {
@@ -74,12 +83,7 @@ let init(): State * Cmd<Msg> =
             ConnectedUsers = []
             NotificationsVisible = false
 
-            ThreeCardsTemplate =
-                {
-                    SelectedAttribute1 = None
-                    SelectedAttribute2 = None
-                    SelectedCharacter = None
-                }
+            ThreeCardsTemplate = ThreeCardsTemplate.empty
             SelectOneAttribute = None
         }
     state, Cmd.none
@@ -123,7 +127,10 @@ let update (msg: Msg) (state: State): State * Cmd<Msg> =
                             | GameStarted gameState ->
                                 let state =
                                     { state with
-                                        GameState = gameState |> Some }
+                                        GameState = gameState |> Some
+                                        ThreeCardsTemplate = ThreeCardsTemplate.empty
+                                        SelectOneAttribute = None
+                                    }
                                 (gameLogId, gameLog), state
                             | WaitPlayers count ->
                                 let state =
@@ -202,7 +209,7 @@ let update (msg: Msg) (state: State): State * Cmd<Msg> =
                                         { state with
                                             GameState =
                                                 { gameState with
-                                                    MoveStage = Client.StartGameStage
+                                                    MoveStage = Client.RestartStage
                                                 }
                                                 |> Some
                                         }
@@ -214,7 +221,7 @@ let update (msg: Msg) (state: State): State * Cmd<Msg> =
                                                     GameState =
                                                         { state.GameState.Value with
                                                             ClientPlayer =
-                                                                FinalHand cards
+                                                                FinalHand (cards, false)
                                                         }
                                                         |> Some
                                                 }
@@ -227,13 +234,48 @@ let update (msg: Msg) (state: State): State * Cmd<Msg> =
                                                             OtherPlayers =
                                                                 Map.add
                                                                     playerId
-                                                                    (Client.FinalHand cards)
+                                                                    (Client.FinalHand (cards, false))
                                                                     gameState.OtherPlayers
                                                         }
                                                         |> Some
                                                 }
                                         ) state
 
+                                    (gameLogId, gameLog), state
+                                | Restart playerId ->
+                                    let state =
+                                        if playerId = state.PlayerId then
+                                            { state with
+                                                GameState =
+                                                    { gameState with
+                                                        ClientPlayer =
+                                                            match gameState.ClientPlayer with
+                                                            | FinalHand (cards, _) ->
+                                                                FinalHand (cards, true)
+                                                            | x -> failwithf "expected FinalHand (cards, _) but %A" x
+                                                    }
+                                                    |> Some
+                                            }
+                                        else
+                                            { state with
+                                                GameState =
+                                                    let gameState =
+                                                        state.GameState.Value
+                                                    { gameState with
+                                                        OtherPlayers =
+                                                            let p = gameState.OtherPlayers.[playerId]
+                                                            let x =
+                                                                match p with
+                                                                | Client.FinalHand (cards, _) ->
+                                                                    Client.FinalHand (cards, true)
+                                                                | x -> failwithf "expected Client.FinalHand (cards, _) but %A" x
+                                                            Map.add
+                                                                playerId
+                                                                x
+                                                                gameState.OtherPlayers
+                                                    }
+                                                    |> Some
+                                            }
                                     (gameLogId, gameLog), state
                                 | SelectedOneAttribute playerId ->
                                     let state =
@@ -463,6 +505,13 @@ let update (msg: Msg) (state: State): State * Cmd<Msg> =
             // TODO: здесь должен быть какой-нибудь Result
             state, cmd
         | None -> state, Cmd.none
+
+    | RestartMove ->
+        let cmd =
+            Shared.RestartMove
+            |> Cmd.bridgeSend
+        // TODO: здесь должен быть какой-нибудь Result
+        state, cmd
 
     | Login ->
         match state.PlayerId with
@@ -747,7 +796,7 @@ let containerBox (state : State) (dispatch : Msg -> unit) =
                                     div [] [
                                         str "wait for StartGameStage"
                                     ]
-                            | Client.StartGameStage ->
+                            | Client.RestartStage ->
                                 match state.GameState with
                                 | Some gameState ->
                                     let threeCardsRender (threeCards:ThreeCards) =
@@ -772,7 +821,7 @@ let containerBox (state : State) (dispatch : Msg -> unit) =
                                     div [] [
                                         div [] [ b [] [ str state.PlayerId] ]
                                         match gameState.ClientPlayer with
-                                        | FinalHand hand ->
+                                        | FinalHand (hand, isRestart) ->
                                             threeCardsRender hand
                                         | _ -> ()
                                     ]
@@ -785,7 +834,7 @@ let containerBox (state : State) (dispatch : Msg -> unit) =
                                                 div [] [ b [] [ str playerId ] ]
                                                 div [] [
                                                     match v with
-                                                    | Client.FinalHand hand ->
+                                                    | Client.FinalHand (hand, _) ->
                                                         threeCardsRender hand
                                                     | _ -> ()
                                                 ]
@@ -793,7 +842,19 @@ let containerBox (state : State) (dispatch : Msg -> unit) =
                                         )
                                     )
 
-
+                                    match gameState.ClientPlayer with
+                                    | FinalHand (_, isRestart) ->
+                                        Control.p [] [
+                                            Button.a [
+                                                let isEnabled = not isRestart
+                                                Button.Disabled (not isEnabled)
+                                                Button.OnClick (fun _ ->
+                                                    if isEnabled then dispatch RestartMove)
+                                            ] [
+                                                Fa.i [ Fa.Solid.Sync ] []
+                                            ]
+                                        ]
+                                    | _ -> ()
                                 | None -> ()
                         ]
                     ]

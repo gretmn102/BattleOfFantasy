@@ -13,18 +13,20 @@ type State = {
     CharactersDeck: CharacterId list
 }
 
-type SelectAttributeNext =
-    | WaitSelectAttribute of SelectAttribute
-    | StartGame of State
-and SelectAttribute = State * (PlayerId * AttributeId -> Either<SelectAttributeError, SelectAttributeNext>)
-
-type SelectThreeCardsNext =
-    | WaitSelectThreeCards of SelectThreeCards
-    | SelectAttribute of SelectAttributeNext
-and SelectThreeCards = State * (PlayerId * ThreeCards -> Either<SelectAttributeError, SelectThreeCardsNext>)
-
 type Begin =
-    | Begin of (PlayerId * StartHand) list * SelectThreeCardsNext
+    | Begin of (PlayerId * StartHand) list * SelectThreeCardsCircle
+and SelectThreeCards = State * (PlayerId * ThreeCards -> Either<SelectAttributeError, SelectThreeCardsCircle>)
+and SelectThreeCardsCircle =
+    | WaitSelectThreeCards of SelectThreeCards
+    | SelectAttribute of SelectAttributeCircle
+and SelectAttribute = State * (PlayerId * AttributeId -> Either<SelectAttributeError, SelectAttributeCircle>)
+and SelectAttributeCircle =
+    | WaitSelectAttribute of SelectAttribute
+    | StartGame of RestartFunction
+and RestartFunction = State * (PlayerId -> Either<RestartCircleError, RestartCircle>)
+and RestartCircle =
+    | Restart of RestartFunction
+    | End
 
 module List =
     let splitAt' n xs =
@@ -46,6 +48,42 @@ module List =
             splitAt' 3 [1; 2; 3] = (0, ([1; 2; 3], []))
             splitAt' 3 [1..10] = (0, ([1; 2; 3], [4; 5; 6; 7; 8; 9; 10]))
         ] |> List.forall id
+
+let restartFunction startingGame (state:State) =
+    state, fun playerId ->
+        match Map.tryFind playerId state.Players with
+        | Some stage ->
+            match stage with
+            | FinalHand (hand, isRestart) ->
+                if isRestart then
+                    Left YouHaveAlreadySelectedRestart
+                else
+                    let state =
+                        { state with
+                            Players =
+                                Map.add playerId (FinalHand (hand, true)) state.Players
+                        }
+
+                    Right (startingGame state)
+            | x ->
+                failwithf "Internal error:\nExpected FinalHand but actual %A" x
+        | None ->
+            Left RestartCircleError.YouDontPlay
+    : RestartFunction
+
+let rec startingGame (state:State) =
+    let isContinue =
+        state.Players
+        |> Map.forall (fun _ ->
+            function
+            | FinalHand(_, startAgain) -> startAgain
+            | x -> failwithf "Internal error:\nExpected FinalHand but actual %A" x
+        )
+        |> not
+    if isContinue then
+        Restart (restartFunction startingGame state)
+    else
+        End
 
 let rec selectAttribute (state:State) =
     let isContinue =
@@ -112,14 +150,14 @@ let rec selectAttribute (state:State) =
 
                     Attribute2 = x.GivenAttribute
                 }
-            xs.[(i + 1) % len] <- p2Id, FinalHand x
+            xs.[(i + 1) % len] <- p2Id, FinalHand (x, false)
         )
         let state =
             { state with
                 Players =
                     xs |> Map.ofArray
             }
-        StartGame state
+        StartGame (restartFunction startingGame state)
 
 
 let rec selectThreeCardsNext (state:State) =
@@ -166,8 +204,8 @@ let start players =
     let state =
         {
             Players = Map.empty
-            AttributesDeck = Init.attributes |> List.map fst
-            CharactersDeck = Init.characters |> List.map fst
+            AttributesDeck = Init.attributes |> List.map fst |> List.shuffle
+            CharactersDeck = Init.characters |> List.map fst |> List.shuffle
         }
     let startHands, state =
         players
