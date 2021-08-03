@@ -26,7 +26,8 @@ Target.create "Clean" (fun _ -> Shell.cleanDir deployDir)
 Target.create "InstallClient" (fun _ -> Npm.install id)
 
 let bundle () =
-    dotnet (sprintf "publish -c Release -o \"%s\"" deployDir) serverPath
+    let runtimeOption = if Environment.isUnix then "--runtime linux-x64" else ""
+    dotnet (sprintf "publish -c Release -o \"%s\" %s" deployDir runtimeOption) serverPath
     Npm.run "build" id
 
 Target.create "Bundle" (fun _ -> bundle())

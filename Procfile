@@ -1,1 +1,1 @@
-web: cd ./deploy/Server/ && ./Server
+web: cd ./deploy && ./Server
