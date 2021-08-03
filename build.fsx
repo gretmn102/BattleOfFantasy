@@ -7,6 +7,7 @@ open Fake.DotNet
 open Fake.IO
 open Farmer
 open Farmer.Builders
+open Fake.JavaScript
 
 Target.initEnvironment ()
 
@@ -16,35 +17,17 @@ let deployDir = Path.getFullName "./deploy"
 let sharedTestsPath = Path.getFullName "./tests/Shared"
 let serverTestsPath = Path.getFullName "./tests/Server"
 
-let npm args workingDir =
-    let npmPath =
-        match ProcessUtils.tryFindFileOnPath "npm" with
-        | Some path -> path
-        | None ->
-            "npm was not found in path. Please install it and make sure it's available from your path. " +
-            "See https://safe-stack.github.io/docs/quickstart/#install-pre-requisites for more info"
-            |> failwith
-
-    let arguments = args |> String.split ' ' |> Arguments.OfArgs
-
-    Command.RawCommand (npmPath, arguments)
-    |> CreateProcess.fromCommand
-    |> CreateProcess.withWorkingDirectory workingDir
-    |> CreateProcess.ensureExitCode
-    |> Proc.run
-    |> ignore
-
 let dotnet cmd workingDir =
     let result = DotNet.exec (DotNet.Options.withWorkingDirectory workingDir) cmd ""
     if result.ExitCode <> 0 then failwithf "'dotnet %s' failed in %s" cmd workingDir
 
 Target.create "Clean" (fun _ -> Shell.cleanDir deployDir)
 
-Target.create "InstallClient" (fun _ -> npm "install" ".")
+Target.create "InstallClient" (fun _ -> Npm.install id)
 
 let bundle () =
     dotnet (sprintf "publish -c Release -o \"%s\"" deployDir) serverPath
-    npm "run build" "."
+    Npm.run "build" id
 
 Target.create "Bundle" (fun _ -> bundle())
 Target.create "JustBundle" (fun _ -> bundle())
@@ -66,7 +49,7 @@ Target.create "Azure" (fun _ ->
 let run () =
     dotnet "build" sharedPath
     [ async { dotnet "watch run" serverPath }
-      async { npm "run start" "." } ]
+      async { Npm.run "start" id } ]
     |> Async.Parallel
     |> Async.RunSynchronously
     |> ignore
@@ -78,7 +61,7 @@ Target.create "JustRun" (fun _ -> run ())
 let runTests () =
     dotnet "build" sharedTestsPath
     [ async { dotnet "watch run" serverTestsPath }
-      async { npm "run test:live" "." } ]
+      async { Npm.run "test:live" id } ]
     |> Async.Parallel
     |> Async.RunSynchronously
     |> ignore
