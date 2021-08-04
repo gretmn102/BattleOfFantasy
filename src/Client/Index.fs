@@ -529,13 +529,10 @@ open Fable.FontAwesome
 let navBrand =
     Navbar.Brand.div [ ] [
         Navbar.Item.a [
-            Navbar.Item.Props [ Href "https://gretmn102.github.io/" ]
+            Navbar.Item.Props [ Href "https://github.com/gretmn102/BattleOfFantasy"; Target "_blank" ]
             Navbar.Item.IsActive true
         ] [
-            img [
-                Src "/favicon.png"
-                Alt "Logo"
-            ]
+            Fa.i [ Fa.Brand.Github ] []
         ]
     ]
 
