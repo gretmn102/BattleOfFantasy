@@ -80,6 +80,14 @@ let update clientDispatch msg state =
         match state with
         | Disconnected -> ()
         | Connected u ->
+            let res = m.PostAndReply(fun r -> Leave(u.Name, r))
+            match res with
+            | ThisUserNotPlayed -> ()
+            | PlayerLeft -> ()
+            | AllPlayersLeft ->
+                printfn "all players left — restart game"
+                m.Post RestartGame
+
             connections.BroadcastClient(RemoveUser u.Name)
             let msg =
                 {

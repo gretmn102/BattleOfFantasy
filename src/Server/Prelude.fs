@@ -10,11 +10,22 @@ type 'a Res =
         PlayersMsgs: Map<UserId, GetStateResult<GameResponse, Client.GameState> list>
     }
 
+type PlayerStatus =
+    | Played
+    | Leaved
+
+type LeaveResult =
+    | ThisUserNotPlayed
+    | PlayerLeft
+    | AllPlayersLeft
+
 type T =
     | Login of UserId * AsyncReplyChannel<Result<Client.GameState option, LoginError> Res>
     | SelectThreeCardsMove of (UserId * ThreeCards) * AsyncReplyChannel<Result<unit, MoveError> Res>
     | SelectOneAttributeMove of (UserId * AttributeId) * AsyncReplyChannel<Result<unit, MoveError> Res>
     | RestartMove of UserId * AsyncReplyChannel<Result<unit, MoveError> Res>
+    | Leave of UserId * AsyncReplyChannel<LeaveResult>
+    | RestartGame
 
 type GameStage =
     | SelectThreeCardsStage of Abstr.SelectThreeCards
@@ -23,9 +34,14 @@ type GameStage =
 
 type State =
     {
-        Players: Map<UserId, unit>
+        Players: Map<UserId, PlayerStatus>
         GameStage: GameStage option
     }
+    static member Empty =
+        {
+            Players = Map.empty
+            GameStage = None
+        }
 
 let toClientGameState currPlayerId (abstrState:Abstr.State) (gameStage:GameStage) : Client.GameState =
     let pls = abstrState.Players
@@ -138,11 +154,13 @@ let exec state = function
                 |> Ok
                 |> justReturn
                 |> r.Reply
+
+                { state with Players = Map.add userId Played state.Players }
             | _ ->
                 justReturn (Ok None)
                 |> r.Reply
 
-            state
+                state
         elif playersCount >= maxPlayers then
             justReturn (Error PlayersRecruited)
             |> r.Reply
@@ -159,7 +177,7 @@ let exec state = function
                 { state with
                     Players =
                         state.Players
-                        |> Map.add userId ()
+                        |> Map.add userId Played
                 }
             if playersCount + 1 = maxPlayers then // start the game
                 let playersMsgs, state = beginGame playersMsgs state
@@ -180,7 +198,7 @@ let exec state = function
 
                 { state with
                     Players =
-                        state.Players |> Map.add userId ()
+                        state.Players |> Map.add userId Played
                 }
     | SelectThreeCardsMove((userId, threeCards), r) ->
         if Map.containsKey userId state.Players then
@@ -349,13 +367,27 @@ let exec state = function
         else
             r.Reply (justReturn (Error (GetStateError YouAreNotLogin)))
             state
+    | Leave(userId, r) ->
+        if Map.containsKey userId state.Players then
+            let players =
+                Map.add userId Leaved state.Players
+            let state =
+                { state with Players = players }
+
+            if players |> Map.forall (fun _ -> (=) Leaved) then
+                AllPlayersLeft
+            else
+                PlayerLeft
+            |> r.Reply
+
+            state
+        else
+            r.Reply ThisUserNotPlayed
+            state
+    | RestartGame ->
+        State.Empty
 
 let m =
-    let st =
-        {
-            Players = Map.empty
-            GameStage = None
-        }
     MailboxProcessor.Start (fun mail ->
         let rec loop (st:State) =
             async {
@@ -369,5 +401,5 @@ let m =
 
                 return! loop st
             }
-        loop st
+        loop State.Empty
     )
