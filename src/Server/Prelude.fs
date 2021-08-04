@@ -76,7 +76,7 @@ let toClientGameState currPlayerId (abstrState:Abstr.State) (gameStage:GameStage
             | RestartStage _ -> Client.RestartStage
     }
 
-let maxPlayers = 3
+let maxPlayers = 2
 
 let justReturn x =
     {
