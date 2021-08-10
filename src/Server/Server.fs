@@ -14,7 +14,7 @@ type ServerMsg =
     | RS of RemoteServerMsg
     | Closed
 type State =
-    | Connected of User
+    | Connected of User * (RemoteClientMsg -> unit)
     | Disconnected
 
 let connections =
@@ -49,37 +49,29 @@ let history =
         ChangeName = fun o n -> mb.Post(Choice3Of3 (o,n))
     }
 
-let sendCLient userId (msgs:RemoteClientMsg) =
-    // TODO: найти вменяемый способ отправки, потому что-то это безобразие перебирает весь список, хотя мог бы послать конкретному пользователю
-    let mutable success = false
-    connections.SendClientIf
-        (function
-         | Connected u ->
-            success <- true
-            u.Name = userId
-         | Disconnected -> false
-        )
-        msgs
-    success
-
 let sendAllMessages currentUserId clientDispatch playersMsgs =
-    playersMsgs
-    |> Map.iter (fun userId msgs ->
-        if currentUserId <> userId then
-            let success = sendCLient userId (GameMsgs msgs)
-            // TODO: и что делать с сообщениями, если игрок вышел?
-            ()
+    connections.GetModels()
+    |> List.iter (
+        function
+        | Connected (user, dispatch) ->
+            let userId = user.Name
+            if currentUserId <> userId then
+                match Map.tryFind userId playersMsgs with
+                | Some msgs ->
+                    dispatch (GameMsgs msgs)
+                | None -> ()
+        | Disconnected -> ()
     )
 
     Map.tryFind currentUserId playersMsgs
     |> Option.iter (GameMsgs >> clientDispatch)
 
-let update clientDispatch msg state =
+let update clientDispatch msg (state:State) =
     match msg with
     | Closed ->
         match state with
         | Disconnected -> ()
-        | Connected u ->
+        | Connected (u, _) ->
             let res = m.PostAndReply(fun r -> Leave(u.Name, r))
             match res with
             | ThisUserNotPlayed -> ()
@@ -101,17 +93,16 @@ let update clientDispatch msg state =
     | RS msg ->
         let nameInUse name =
             connections.GetModels()
-            |> Seq.exists (function
+            |> List.exists (function
                 | Disconnected -> false
-                | Connected { Name = n } -> n = name)
+                | Connected ({ Name = n }, _) -> n = name)
         match state, msg with
         | _, UsersConnected ->
             let users =
                 connections.GetModels()
-                |> Seq.choose (function
+                |> List.choose (function
                     | Disconnected -> None
-                    | Connected u -> Some u)
-                |> Seq.toList
+                    | Connected (u, _) -> Some u)
             clientDispatch (GetUsers users)
             clientDispatch (AddMsgs (history.Get()))
             state, Cmd.none
@@ -128,7 +119,7 @@ let update clientDispatch msg state =
                 let state =
                     match x.Return with
                     | Ok x ->
-                        Connected u
+                        Connected (u, clientDispatch)
                     | _ -> state
 
                 state, Cmd.none
@@ -156,10 +147,10 @@ let update clientDispatch msg state =
                     connections.BroadcastClient(AddMsg msg)
 
                     f u
-            | Connected u -> f u
-        | state, GameServerMsg gameServerMsg ->
-            match state with
-            | Connected u ->
+            | Connected (u, _) -> f u
+        | userState, GameServerMsg gameServerMsg ->
+            match userState with
+            | Connected (u, _) ->
                 let x =
                     match gameServerMsg with
                     | Shared.ThreeCardsMove word ->
@@ -180,7 +171,7 @@ let update clientDispatch msg state =
             state, Cmd.none
         | Disconnected, SendMsg m ->
             state, Cmd.none
-        | Connected u, SendMsg m ->
+        | Connected(u, _), SendMsg m ->
             if System.String.IsNullOrWhiteSpace m then
                 ()
             else
