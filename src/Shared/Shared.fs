@@ -285,14 +285,16 @@ type RemoteClientMsg =
     | GameMsgs of GetStateResult<GameResponse, Client.GameState> list
     | MoveResult of Result<unit, MoveError>
 
+type GameServerMsg =
+    | ThreeCardsMove of ThreeCards
+    | SelectOneAttributeMove of AttributeId
+    | RestartMove
+
 type RemoteServerMsg =
     | SetUser of User
     | SendMsg of string
     | UsersConnected
-
-    | ThreeCardsMove of ThreeCards
-    | SelectOneAttributeMove of AttributeId
-    | RestartMove
+    | GameServerMsg of GameServerMsg
 
 module Remote =
     let socketPath = "/socket"

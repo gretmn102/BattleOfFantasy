@@ -157,41 +157,17 @@ let update clientDispatch msg state =
 
                     f u
             | Connected u -> f u
-        | state, Shared.ThreeCardsMove word ->
+        | state, GameServerMsg gameServerMsg ->
             match state with
             | Connected u ->
-                let x = m.PostAndReply(fun r -> SelectThreeCardsMove((u.Name, word), r))
-
-                x.Return
-                |> MoveResult
-                |> clientDispatch
-
-                sendAllMessages u.Name clientDispatch x.PlayersMsgs
-            | Disconnected ->
-                Error (GetStateError YouAreNotLogin)
-                |> MoveResult
-                |> clientDispatch
-            state, Cmd.none
-        | state, Shared.SelectOneAttributeMove attributeId ->
-            match state with
-            | Connected u ->
-                let x = m.PostAndReply(fun r -> SelectOneAttributeMove((u.Name, attributeId), r))
-
-                x.Return
-                |> MoveResult
-                |> clientDispatch
-
-                sendAllMessages u.Name clientDispatch x.PlayersMsgs
-            | Disconnected ->
-                Error (GetStateError YouAreNotLogin)
-                |> MoveResult
-                |> clientDispatch
-            state, Cmd.none
-        | state, Shared.RestartMove ->
-            match state with
-            | Connected u ->
-                let x = m.PostAndReply(fun r -> RestartMove(u.Name, r))
-
+                let x =
+                    match gameServerMsg with
+                    | Shared.ThreeCardsMove word ->
+                        m.PostAndReply(fun r -> SelectThreeCardsMove((u.Name, word), r))
+                    | Shared.SelectOneAttributeMove attributeId ->
+                        m.PostAndReply(fun r -> SelectOneAttributeMove((u.Name, attributeId), r))
+                    | Shared.RestartMove ->
+                        m.PostAndReply(fun r -> RestartMove(u.Name, r))
                 x.Return
                 |> MoveResult
                 |> clientDispatch
